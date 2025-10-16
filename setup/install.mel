@@ -1,0 +1,48 @@
+global proc installShaderToolToShelf()
+{
+    string $shelfName = "ShaderTools";
+    global string $gShelfTopLevel;
+
+    // Get all shelves
+    string $shelves[] = `tabLayout -q -ca $gShelfTopLevel`;
+
+    // Check if shelf already exists
+    int $exists = 0;
+    for ($s in $shelves)
+    {
+        if ($s == $shelfName)
+        {
+            $exists = 1;
+            break;
+        }
+    }
+
+    // Create shelf if it doesn't exist
+    if (!$exists)
+    {
+        shelfLayout -p $gShelfTopLevel $shelfName;
+    }
+
+    // Python command to run the tool
+    string $pythonCmd = 
+        "import sys\n" +
+        "shader_path = r'Z:/apps/win64/psi/tools/ShaderManager/source'\n" +
+        "if shader_path not in sys.path:\n" +
+        "    sys.path.append(shader_path)\n" +
+        "from gui import shaderUI\n" +
+        "reload(shaderUI)\n" +
+        "shaderUI.show_shader_tool()";
+
+    // Add shelf button
+    shelfButton 
+        -parent $shelfName
+        -image1 "pythonFamily.png"
+        -label "Shader Tool"
+        -sourceType "python"
+        -command $pythonCmd;
+
+    print("Shader Tool shelf button added to: " + $shelfName + "\n");
+}
+
+// Run after UI is built
+evalDeferred("installShaderToolToShelf()");

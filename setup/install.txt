@@ -1,0 +1,18 @@
+# running this inside Maya's Script Editor or Python tab
+# Just drag this .mel file into Maya’s
+
+import sys
+import os
+from PIL import Image
+
+# Add your custom shader tool path
+shader_tool_path = r"Z:\apps\win64\psi\tools\ShaderManager\source"
+if shader_tool_path not in sys.path and os.path.exists(shader_tool_path):
+    sys.path.append(shader_tool_path)
+
+# Import and reload shaderUI
+from gui import shaderUI
+reload(shaderUI)
+
+# Launch the shader tool UI
+shaderUI.show_shader_tool()
