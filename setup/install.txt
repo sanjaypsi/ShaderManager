@@ -16,3 +16,5 @@ reload(shaderUI)
 
 # Launch the shader tool UI
 shaderUI.show_shader_tool()
+
+# wEBAtriumA_shaderInfo

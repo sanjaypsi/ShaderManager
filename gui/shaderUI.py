@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # =====================================================================================
 # UDIM Sampler for Maya (Python 2.7 Compatible)
+# =====================================================================================
 """
 	Creation Date: 2025.07.10
 	Author: Sanjay Kamble
@@ -13,7 +14,7 @@
 
 import os
 import json
-from pydoc import text
+
 import maya.cmds as cmds
 import maya.OpenMayaUI as omui
 from shiboken2 import wrapInstance
@@ -32,9 +33,13 @@ config_path 	= os.path.join(_root, "config", "config.json")
 from core import udim_sampler
 from core import shader_assigner
 from core import utils
+from core import shader_re_assigner
+
 reload(udim_sampler) 	# dev mode, reload the module
 reload(shader_assigner) # dev mode, reload the module
 reload(utils)
+reload(shader_re_assigner)
+
 
 # ---------------------------------------------------------------------------------------------------
 # Helper function to load configuration from JSON
@@ -93,7 +98,7 @@ class ShaderToolWindow(QMainWindow):
 		self.setWindowTitle("Shader Tool")
 		self.resize(1250, 500)
 		
-		self.ui.splitter.setSizes([300, 700])
+		self.ui.splitter.setSizes([200, 500, 200])
 
 		# load_config
 		try:
@@ -114,6 +119,7 @@ class ShaderToolWindow(QMainWindow):
 		self.table 				= self.ui.findChild(QtWidgets.QTableWidget, "tableWidget")
 		self.generate_button 	= self.ui.findChild(QtWidgets.QPushButton, "pushButton")
 		self.assign_button 		= self.ui.findChild(QtWidgets.QPushButton, "pushButton_2")
+		self.re_assign_button 	= self.ui.findChild(QtWidgets.QPushButton, "ReAssigin_oldShader_BTN")
 
 		# Enable Ctrl/Shift multi-selection
 		self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -124,6 +130,7 @@ class ShaderToolWindow(QMainWindow):
 		# Connect signals
 		self.generate_button.clicked.connect(self.get_selected_table_rows)
 		self.assign_button.clicked.connect(self.assign_shader_to_objects)
+		self.re_assign_button.clicked.connect(self.re_assign_old_shader)
 
 		# Populate
 		self._create_menu_bar()
@@ -138,16 +145,16 @@ class ShaderToolWindow(QMainWindow):
 		menu_bar = self.menuBar()
 
 		# File Menu
-		file_menu = menu_bar.addMenu("File")
-		refresh_action = file_menu.addAction("Refresh")
-		exit_action = file_menu.addAction("Exit")
+		file_menu 		= menu_bar.addMenu("File")
+		refresh_action 	= file_menu.addAction("Refresh")
+		exit_action 	= file_menu.addAction("Exit")
 
 		refresh_action.triggered.connect(self.populate_table)
 		exit_action.triggered.connect(self.close)
 
 		# Help Menu
-		help_menu = menu_bar.addMenu("Help")
-		about_action = help_menu.addAction("About")
+		help_menu 		= menu_bar.addMenu("Help")
+		about_action 	= help_menu.addAction("About")
 		about_action.triggered.connect(self.show_about_dialog)
 
 	# ---------------------------------------------------------------------------------------------------
@@ -672,7 +679,65 @@ class ShaderToolWindow(QMainWindow):
 				continue
 
 		# self.assign_shader("Assigned")  # Call the assign_shader method to update the UI
-	
+
+	# ---------------------------------------------------------------------------------------------------
+	# re assign old shader
+	# --------------------------------------------------------------------------------------------------
+	def re_assign_old_shader(self):
+		"""Reassign old shaders to objects based on the shaderGeneration.json file."""
+		selected_only 	= self.checkbox.isChecked()
+		selected_data 	= []
+
+		# Get data from selected or all rows
+		if selected_only:
+			selected_indexes = self.table.selectionModel().selectedRows()
+			if not selected_indexes:
+				QMessageBox.warning(self, "No Selection", "Please select at least one row.")
+				return []
+			rows = [index.row() for index in selected_indexes]
+		else:
+			rows = range(self.table.rowCount())
+
+		# Extract data from rows
+		for row in rows:
+			row_data = {
+				"reference_path"	: self.table.item(row, 0).text(),
+				"asset_type"		: self.table.item(row, 1).text(),
+				"assets_name"		: self.table.item(row, 2).text(),
+				"revision"			: self.table.item(row, 3).text(),
+				"result"			: self.table.item(row, 4).text(),
+			}
+			selected_data.append(row_data)
+
+		# Process each selected row
+		self.config 	= load_config(config_path)
+		texture_paths 	= self.config.get("ShaderPath", "")
+
+		for data in selected_data:
+			asset_type 		= (data.get("asset_type") or "").strip()
+			assets_name 	= (data.get("assets_name") or "").strip()
+			reference_path 	= (data.get("reference_path") or "").strip()
+			revision 		= (data.get("revision") or "").strip()
+			result 			= (data.get("result") or "").strip()
+			shaderPath 		= os.path.join(texture_paths, asset_type, assets_name, revision, "OlderShader.json").replace("\\", "/")
+			
+			if result == "Assigned":
+				# Reassign the old shader
+				re_assigner = shader_re_assigner.ShaderReAssigner( shaderPath)
+				QMessageBox.information(self, "Result", "Old shader reassigned for: {}".format(assets_name))
+
+				# update Result
+				self.table.item(row, 4).setText("Shader-Generated")
+				bg_color = QtGui.QColor("#ff9800")  # Orange
+				self.table.item(row, 4).setBackground(bg_color)
+
+				# get network node update Status
+				# join name wEBAtriumA_shaderInfo
+				network_node = '_'.join([assets_name, "shaderInfo"])
+				if cmds.objExists(network_node):
+					cmds.setAttr("%s.status" % network_node, "Shader-Generated", type="string")
+
+
 # ====================================================================================================
 shader_tool_window = None
 # ====================================================================================================

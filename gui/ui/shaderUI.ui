@@ -97,12 +97,23 @@
       </property>
       <widget class="QPushButton" name="pushButton">
        <property name="text">
-        <string>Gernerate_shader</string>
+        <string>Gernerate_Shader</string>
        </property>
       </widget>
       <widget class="QPushButton" name="pushButton_2">
        <property name="text">
-        <string>Assgin_ shader</string>
+        <string>Assgin_ Shader</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="ReAssigin_oldShader_BTN">
+       <property name="font">
+        <font>
+         <weight>50</weight>
+         <bold>false</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>Shader_Re_Aassigner</string>
        </property>
       </widget>
      </widget>
