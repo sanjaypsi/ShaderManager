@@ -724,18 +724,18 @@ class ShaderToolWindow(QMainWindow):
 			if result == "Assigned":
 				# Reassign the old shader
 				re_assigner = shader_re_assigner.ShaderReAssigner( shaderPath)
-				QMessageBox.information(self, "Result", "Old shader reassigned for: {}".format(assets_name))
+				# QMessageBox.information(self, "Result", "Old shader reassigned for: {}".format(assets_name))
 
-				# update Result
-				self.table.item(row, 4).setText("Shader-Generated")
-				bg_color = QtGui.QColor("#ff9800")  # Orange
-				self.table.item(row, 4).setBackground(bg_color)
+				# # update Result
+				# self.table.item(row, 4).setText("Shader-Generated")
+				# bg_color = QtGui.QColor("#ff9800")  # Orange
+				# self.table.item(row, 4).setBackground(bg_color)
 
-				# get network node update Status
-				# join name wEBAtriumA_shaderInfo
-				network_node = '_'.join([assets_name, "shaderInfo"])
-				if cmds.objExists(network_node):
-					cmds.setAttr("%s.status" % network_node, "Shader-Generated", type="string")
+				# # get network node update Status
+				# # join name wEBAtriumA_shaderInfo
+				# network_node = '_'.join([assets_name, "shaderInfo"])
+				# if cmds.objExists(network_node):
+				# 	cmds.setAttr("%s.status" % network_node, "Shader-Generated", type="string")
 
 
 # ====================================================================================================

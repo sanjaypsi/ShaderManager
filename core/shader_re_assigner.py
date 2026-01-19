@@ -5,6 +5,7 @@
 
 
 import json
+import select
 import maya.cmds as cmds
 
 # ==============================================================================================================
@@ -89,7 +90,7 @@ def re_assigner_old(json_path):
             continue
 
         for obj in objects:
-            base_obj = obj.split(".")[0]
+            base_obj = obj.split(":")[-1]
             if not cmds.objExists(base_obj):
                 print("   ⚠️ Object not found: {0}".format(obj))
                 continue
@@ -104,8 +105,71 @@ def re_assigner_old(json_path):
     delete_unused_shaders()
     return True
 
+# ==============================================================================================================
 
+def re_assigner_selectedObjects(json_path, selectedObjs):
+    """
+    Reassign shaders (materials or shading groups) to selected objects in Maya.
+    Fixes 'NOT A SET' by resolving shading groups if a material is given.
+    Works in Python 2.7
+    """
+
+    if not selectedObjs:
+        print("⚠ No objects selected.")
+        return False
+    
+
+    getShape            = cmds.listRelatives(str(selectedObjs), shapes=True, fullPath=True) or []
+    selectedObjShape    = getShape[0].split(":")[-1] if getShape else ""
+    print("selectedObjShape ", selectedObjShape)
+    # Load JSON
+    try:
+        with open(json_path, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        print("❌ Failed to parse JSON: {}".format(e))
+        return False
+
+    shader_connections = data.get("shader_connections", {})
+
+    for shader, info in shader_connections.items():
+        objects = info.get("connected_objects", [])
+
+        if not cmds.objExists(shader):
+            print("⚠ Shader not found: {}".format(shader))
+            continue
+
+        sg = get_shading_group(shader)
+        if not sg or not cmds.objExists(sg):
+            print("⚠ No shading group found for: {}".format(shader))
+            continue
+
+        for obj in objects:
+            base_obj = obj.split(":")[-1]
+            if base_obj != selectedObjShape:
+                continue
+
+            try:
+                cmds.sets(getShape[0], e=True, forceElement=sg)
+                print("✅ Assigned {} → {}".format(sg, selectedObjShape))
+            except Exception as e:
+                print("❌ Failed assigning {} → {} ({})".format(sg, selectedObjShape, e))
+
+    return True
+
+# ==============================================================================================================
 # "E:\RTB\user\maya\textureTool\set\wEBAtriumA\r0008\OlderShader.json"
+# ==============================================================================================================
 def ShaderReAssigner(json_path):
-    if json_path:
-        re_assigner_old(json_path)
+    selectedObjs = cmds.ls(selection=True)
+
+    if not selectedObjs:
+        print(" No objects selected. Please select objects to re-assign shaders.")
+        if json_path:
+            re_assigner_old(json_path)
+
+    else:
+        for obj in selectedObjs:
+            re_assigner_selectedObjects(json_path, obj)
+
+        # print(" Re-assigning shaders to selected objects...", selectedObjs)
