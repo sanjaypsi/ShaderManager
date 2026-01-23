@@ -227,12 +227,15 @@ class UDIMSampler(object):
                 mesh_namespace = short_name.split(":")[0]
                 if namespace and mesh_namespace not in namespace:
                     continue
+
             shader = self.get_shader_from_shape(shape)
             if not shader:
                 continue
+
             shader_info = self.get_file_texture_or_color_from_shader(shader)
             if not shader_info:
                 continue
+
             uv_sets = cmds.polyUVSet(shape, query=True, allUVSets=True) or []
             per_uv_samples = []
             for uv_set in uv_sets:
@@ -241,22 +244,31 @@ class UDIMSampler(object):
                     texture_path = self.get_texture_file_path(texture_node)
                     if not texture_path:
                         continue
+
                     if "<f>" in texture_path:
                         uv_colors = self.sample_using_dominant_color(shape, uv_set, texture_path)
+
                     else:
-                        udim_template = self.convert_to_udim_template(texture_path)
-                        uv_colors = self.sample_uv_colors_from_udim(shape, uv_set, udim_template)
+                        udim_template   = self.convert_to_udim_template(texture_path)
+                        uv_colors       = self.sample_uv_colors_from_udim(shape, uv_set, udim_template)
+
                 else:
                     uv_colors = self.sample_flat_color(shape, uv_set, shader_info["value"])
+                    
                 per_uv_samples.append({"uv_set": uv_set, "samples": uv_colors[:sample_count]})
+                
             if per_uv_samples:
                 matched_meshes.append({"object": shape, "uv_sets": per_uv_samples})
+
             progress_dialog.setValue(idx + 1)
             QtWidgets.QApplication.processEvents()
+
         progress_dialog.close()
         json_data = {"meshes": matched_meshes}
+
         if not json_output_path:
             json_output_path = os.path.join(cmds.internalVar(userTmpDir=True), "udim_samples.json").replace("\\", "/")
+       
         try:
             output_folder = os.path.dirname(json_output_path)
             if not os.path.exists(output_folder):
@@ -266,6 +278,7 @@ class UDIMSampler(object):
         except Exception as e:
             cmds.error(" Failed to save UV sample data: {}".format(e))
             return
+        
         utils._get_oldShader_(output_path=None, jsonfile=json_output_path)
         cmds.inViewMessage(amg='<hl>✔ UDIM Sampling complete</hl>', pos='topCenter', fade=True)
         return json_output_path

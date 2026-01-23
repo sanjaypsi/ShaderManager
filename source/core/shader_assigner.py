@@ -3,9 +3,13 @@
 # UDIM Sampler for Maya (Python 2.7 Compatible)
 
 
+import re
 import maya.cmds as cmds
 import json
 import os
+
+import selected_color_sampler
+reload(selected_color_sampler)
 
 #================================================================================================================================
 # ShaderAssigner Class
@@ -97,6 +101,7 @@ class ShaderAssigner(object):
             cmds.sets(object_name, edit=True, forceElement=shading_group)
             # print(" Assigned shader to object:", object_name)
         except Exception as e:
+
             print(" Failed to assign shader to '{}': {}".format(object_name, e))
 
     # ---------------------------------------------------------------------------------------------------------------------------
@@ -121,10 +126,14 @@ class ShaderAssigner(object):
                 return sg
 
         # Create new shader
-        shader_name     = "shader_{:03d}_{:03d}_{:03d}".format(*color_rgb)
-        shader, sg      = self.create_lambert_shader(shader_name, color_rgb)
-        self.shader_cache[tuple(color_rgb)] = sg
-        return sg
+        if color_rgb == (0, 0, 0):
+            pass
+        
+        else:
+            shader_name     = "shader_{:03d}_{:03d}_{:03d}".format(*color_rgb)
+            shader, sg      = self.create_lambert_shader(shader_name, color_rgb)
+            self.shader_cache[tuple(color_rgb)] = sg
+            return sg
 
     # ---------------------------------------------------------------------------------------------------------------------------
     # Process the JSON data and assign shaders to objects based on their sample colors
@@ -141,11 +150,12 @@ class ShaderAssigner(object):
 
         for mesh_data in meshes:
             object_path = mesh_data.get("object")
-            uv_sets = mesh_data.get("uv_sets", [])
+            uv_sets     = mesh_data.get("uv_sets", [])
 
             if not object_path:
                 print(" No object path found for a mesh entry.")
                 continue
+
             if not uv_sets:
                 print("No UV sets found for object: {}".format(object_path))
                 continue
@@ -161,15 +171,27 @@ class ShaderAssigner(object):
                 samples = uv.get("samples", [])
                 if samples:
                     color = samples[0].get("color")
+                    if color == [0,0,0]:
+                        selected_color_sampler.apply_dominant_color_as_shader()
+
                     if color:
                         break
 
             if not color:
-                print(" No sample color found for object: {}".format(object_path))
+                # print(" No sample color found for object: {}".format(object_path))
                 continue
 
             # Get or create shader
+            if color == [0,0,0]:
+                print(" Processing object: {}, color: {}".format(object_in_scene, color))
+                continue
+            
             shading_group = self.get_or_create_shader_for_color(color, tolerance=2)
 
             # Assign shader
             self.assign_shader_to_object(object_in_scene, shading_group)
+
+        # sample is null/empty, it uses the
+        # Dominant Color Sampler to find the color and assign a shader.
+        selected_color_sampler.assign_select_object(json_path)
+# ---------------------------------------------------------------------------------------------------

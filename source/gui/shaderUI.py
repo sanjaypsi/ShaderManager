@@ -14,6 +14,7 @@
 
 import os
 import json
+import re
 
 import maya.cmds as cmds
 import maya.OpenMayaUI as omui
@@ -112,14 +113,21 @@ class ShaderToolWindow(QMainWindow):
 		manager.process_all_references()
 
 		# Apply Dark Theme
-		self.apply_stylesheet()
+		# self.apply_stylesheet()
 
 		# Find UI elements
-		self.checkbox 			= self.ui.findChild(QtWidgets.QCheckBox, "checkBox")
-		self.table 				= self.ui.findChild(QtWidgets.QTableWidget, "tableWidget")
-		self.generate_button 	= self.ui.findChild(QtWidgets.QPushButton, "pushButton")
-		self.assign_button 		= self.ui.findChild(QtWidgets.QPushButton, "pushButton_2")
-		self.re_assign_button 	= self.ui.findChild(QtWidgets.QPushButton, "ReAssigin_oldShader_BTN")
+		self.checkbox 					= self.ui.findChild(QtWidgets.QCheckBox, "checkBox")
+		self.table 						= self.ui.findChild(QtWidgets.QTableWidget, "tableWidget")
+		self.generate_button 			= self.ui.findChild(QtWidgets.QPushButton, "pushButton")
+		self.assign_button 				= self.ui.findChild(QtWidgets.QPushButton, "pushButton_2")
+		self.re_assign_button 			= self.ui.findChild(QtWidgets.QPushButton, "ReAssigin_oldShader_BTN")
+		self.sel_obj_re_assign_button 	= self.ui.findChild(QtWidgets.QPushButton, "pushButton_3")
+		self.filterCombox				= self.ui.findChild(QtWidgets.QComboBox, "comboBox")
+
+		# Set table properties
+		# splitter resize
+		self.ui.splitter.setSizes([1, 1, 1])
+		self.ui.splitter_2.setSizes([1, 750])
 
 		# Enable Ctrl/Shift multi-selection
 		self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -129,14 +137,17 @@ class ShaderToolWindow(QMainWindow):
 
 		# Connect signals
 		self.generate_button.clicked.connect(self.get_selected_table_rows)
-		self.assign_button.clicked.connect(self.assign_shader_to_objects)
+		self.assign_button.clicked.connect(self.assign_shader_to_objects) # Updated to call the correct method [ assign_shader_to_objects]
 		self.re_assign_button.clicked.connect(self.re_assign_old_shader)
+		self.filterCombox.currentIndexChanged.connect(self.populate_table)
+		self.sel_obj_re_assign_button.clicked.connect(self.assign_shader_to_Selected_objects)
 
 		# Populate
 		self._create_menu_bar()
 		self.populate_table()
 		self.get_data_from_table()
 		self.add_result_to_table()
+		self._add_Asset_Type_filter()
 
 	# ---------------------------------------------------------------------------------------------------
 	# Setup the main window
@@ -204,7 +215,7 @@ class ShaderToolWindow(QMainWindow):
 					"revision"       : referenceRevision,
 					"result"         : str(status),
 				})
-
+				
 		return data
 
 	# ---------------------------------------------------------------------------------------------------
@@ -213,16 +224,29 @@ class ShaderToolWindow(QMainWindow):
 	def populate_table(self):
 		data = self.get_network_node()
 
-		print(data)
-		self.table.setRowCount(len(data))
+		self.table.clearContents()
+		self.table.setRowCount(0)
 		self.table.setColumnCount(5)
-		self.table.setHorizontalHeaderLabels(["Reference_Path", 
-											"Asset_Type", 
-											"Assets_Name", 
-											"Revision", 
-											"Result"])
 
-		for row, entry in enumerate(data):
+		self.table.setHorizontalHeaderLabels([
+			"Reference_Path",
+			"Asset_Type",
+			"Assets_Name",
+			"Revision",
+			"Result"
+		])
+
+		filter_value = self.filterCombox.currentText()
+
+		row = 0
+		for entry in data:
+
+			# Apply filter
+			if filter_value != "All Types" and filter_value != entry["asset_type"]:
+				continue
+
+			self.table.insertRow(row)
+
 			# Column 0: Reference Path
 			item_path = QTableWidgetItem(entry["reference_path"])
 			item_path.setFont(QtGui.QFont("Arial", 10))
@@ -246,22 +270,45 @@ class ShaderToolWindow(QMainWindow):
 			item_rev.setTextAlignment(QtCore.Qt.AlignCenter)
 			self.table.setItem(row, 3, item_rev)
 
-			# Column 4: Result / Status
+			# Column 4: Result
 			item_result = QTableWidgetItem(entry["result"])
 			item_result.setFont(QtGui.QFont("Arial", 10))
 			item_result.setTextAlignment(QtCore.Qt.AlignCenter)
 			self.table.setItem(row, 4, item_result)
 
-		# Adjust column widths
+			row += 1
+
+		# ----------------------------------------
+		# Header sizing (run once)
+		# ----------------------------------------
 		header = self.table.horizontalHeader()
-		self.REFERENCE_COLUMN_WIDTH = 750 
+		self.REFERENCE_COLUMN_WIDTH = 750
 		self.table.setColumnWidth(0, self.REFERENCE_COLUMN_WIDTH)
 		header.setStretchLastSection(True)
+
 		for i in range(1, self.table.columnCount()):
 			header.setSectionResizeMode(i, QHeaderView.Stretch)
 
-		print("Loaded %d shader metadata references." % len(data))
+		print("Loaded %d shader metadata references." % row)
 
+	# ---------------------------------------------------------------------------------------------------
+	# get network_nodes = cmds.ls(type="network")
+	# ---------------------------------------------------------------------------------------------------
+	def _add_Asset_Type_filter(self):
+		"""Populate the asset type filter combo box."""
+		self.filterCombox.clear()
+		self.filterCombox.addItem("All Types")
+
+		asset_types = set()
+		network_nodes = cmds.ls(type="network")
+		for node in network_nodes:
+			if cmds.attributeQuery("referenceType", node=node, exists=True):
+				referenceType = self.safe_get_attr(node, "referenceType")
+				asset_types.add(referenceType)
+
+		for asset_type in sorted(asset_types):
+			self.filterCombox.addItem(asset_type)
+	
 	# ---------------------------------------------------------------------------------------------------
 	# Helper methods
 	# ---------------------------------------------------------------------------------------------------
@@ -405,28 +452,23 @@ class ShaderToolWindow(QMainWindow):
 	# add result to table
 	# ---------------------------------------------------------------------------------------------------
 	def add_result_to_table(self):
-		"""Check shaderInfo.json exists for each reference and update the result column with color."""
+		"""Update result column with status color"""
 		data = self.get_data_from_table()
-		texture_paths = self.config.get("ShaderPath", "")
 
 		for row, entry in enumerate(data):
-			asset_type  = entry["asset_type"]
-			assets_name = entry["assets_name"]
-			revision    = entry["revision"]
-			status      = entry["result"]
+			status = entry.get("result", "Unknown")
 
-			# Initialize default values
-			result_text = "Unknown"
-			bg_color = QtGui.QColor("#616161")  # Gray for unknown
+			# ---- Default (fallback) ----
+			result_text = status
+			bg_color = QtGui.QColor("#616161")  # Gray (Unknown)
 
 			if status == "NA":
-				result_text = "NA"
 				bg_color = QtGui.QColor("#c62828")  # Red
+
 			elif status == "Shader-Generated":
-				result_text = "Shader-Generated"
 				bg_color = QtGui.QColor("#ff9800")  # Orange
+
 			elif status == "Assigned":
-				result_text = "Assigned"
 				bg_color = QtGui.QColor("#2e7d32")  # Green
 
 			result_item = QtWidgets.QTableWidgetItem(result_text)
@@ -435,6 +477,7 @@ class ShaderToolWindow(QMainWindow):
 			result_item.setForeground(QtGui.QColor("#ffffff"))
 
 			self.table.setItem(row, 4, result_item)
+
 
 	# ---------------------------------------------------------------------------------------------------
 	# Get selected table items as a list of dictionaries
@@ -648,6 +691,8 @@ class ShaderToolWindow(QMainWindow):
 				texture_path 	= os.path.join(texture_paths, data["asset_type"], 
 									data["assets_name"], data["revision"], "shaderInfo.json").replace("\\", "/")
 				
+				print("Assigning shader from:", texture_path)
+				
 				assigner 		= shader_assigner.ShaderAssigner()
 				assigner.process_json_and_assign_shaders(texture_path)
 				QMessageBox.information(self, "Result", "Shader assigned for: {}".format(data["assets_name"]))
@@ -721,21 +766,76 @@ class ShaderToolWindow(QMainWindow):
 			result 			= (data.get("result") or "").strip()
 			shaderPath 		= os.path.join(texture_paths, asset_type, assets_name, revision, "OlderShader.json").replace("\\", "/")
 			
-			if result == "Assigned":
-				# Reassign the old shader
-				re_assigner = shader_re_assigner.ShaderReAssigner( shaderPath)
-				# QMessageBox.information(self, "Result", "Old shader reassigned for: {}".format(assets_name))
+		if result == "Assigned":
+			# Reassign the old shader
+			re_assigner = shader_re_assigner.re_assigner_old(shaderPath)
+			
+			if re_assigner:
+				QMessageBox.information(self, "Result", "Shader Re-assignment Completed: {}".format(assets_name))
+				# update Result
+				self.table.item(row, 4).setText("Shader-Generated")
+				bg_color = QtGui.QColor("#ff9800")  # Orange
+				self.table.item(row, 4).setBackground(bg_color)
 
-				# # update Result
-				# self.table.item(row, 4).setText("Shader-Generated")
-				# bg_color = QtGui.QColor("#ff9800")  # Orange
-				# self.table.item(row, 4).setBackground(bg_color)
+				# get network node update Status
+				# join name wEBAtriumA_shaderInfo
+				network_node = '_'.join([assets_name, "shaderInfo"])
+				if cmds.objExists(network_node):
+					cmds.setAttr("%s.status" % network_node, "Shader-Generated", type="string")
+			
+			else:
+				QMessageBox.warning(self, "Result", "Failed to reassign old shader for: {}".format(assets_name))
 
-				# # get network node update Status
-				# # join name wEBAtriumA_shaderInfo
-				# network_node = '_'.join([assets_name, "shaderInfo"])
-				# if cmds.objExists(network_node):
-				# 	cmds.setAttr("%s.status" % network_node, "Shader-Generated", type="string")
+	# ---------------------------------------------------------------------------------------------------
+	# assign shader to Selected objects
+	# ---------------------------------------------------------------------------------------------------
+	def assign_shader_to_Selected_objects(self):
+		"""Reassign old shaders to objects based on the shaderGeneration.json file."""
+		selected_only 	= self.checkbox.isChecked()
+		selected_data 	= []
+
+		# Get data from selected or all rows
+		if selected_only:
+			selected_indexes = self.table.selectionModel().selectedRows()
+			if not selected_indexes:
+				QMessageBox.warning(self, "No Selection", "Please select at least one row.")
+				return []
+			rows = [index.row() for index in selected_indexes]
+		else:
+			rows = range(self.table.rowCount())
+
+		# Extract data from rows
+		for row in rows:
+			row_data = {
+				"reference_path"	: self.table.item(row, 0).text(),
+				"asset_type"		: self.table.item(row, 1).text(),
+				"assets_name"		: self.table.item(row, 2).text(),
+				"revision"			: self.table.item(row, 3).text(),
+				"result"			: self.table.item(row, 4).text(),
+			}
+			selected_data.append(row_data)
+
+		# Process each selected row
+		self.config 	= load_config(config_path)
+		texture_paths 	= self.config.get("ShaderPath", "")
+
+		for data in selected_data:
+			asset_type 		= (data.get("asset_type") or "").strip()
+			assets_name 	= (data.get("assets_name") or "").strip()
+			reference_path 	= (data.get("reference_path") or "").strip()
+			revision 		= (data.get("revision") or "").strip()
+			result 			= (data.get("result") or "").strip()
+			shaderPath 		= os.path.join(texture_paths, asset_type, assets_name, revision, "OlderShader.json").replace("\\", "/")
+			
+		if result == "Assigned":
+			# Reassign the old shader
+			re_assigner = shader_re_assigner.Select_Object_ReAssigner(shaderPath)
+			
+			if re_assigner:
+				QMessageBox.information(self, "Result", "Shader Re-assignment Completed: {}".format(assets_name))
+			
+			else:
+				QMessageBox.warning(self, "Result", "Failed to reassign old shader for: {}".format(assets_name))
 
 
 # ====================================================================================================
